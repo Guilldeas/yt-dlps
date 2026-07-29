@@ -56,7 +56,8 @@ download_playlists() {
             --convert-thumbnails jpg \
             --parse-metadata "playlist_index:%(track_number)s" \
             -o "Custom_Playlist/$genre/%(playlist_index)03d - %(title)s.%(ext)s" \
-            --fragment-retries infinite \
+            --download-archive "Custom_Playlist/$genre/archive.txt" \
+	    --fragment-retries infinite \
             --retry-sleep fragment:exp=1:30 \
             --postprocessor-args "-metadata genre=$genre" \
             "$url"
