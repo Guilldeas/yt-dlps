@@ -3,6 +3,7 @@
 
 #----- Variables -------------------------------------------------------------
 declare -A list_info_arr
+declare num_songs 
 
 #----- Functions -------------------------------------------------------------
 
@@ -49,7 +50,12 @@ download_playlists() {
     for genre in "${!list_info_arr[@]}"; do
         url="${list_info_arr[$genre]}"
 
-        yt-dlp \
+	# Get number of songs in playlist to extract percentage of download completion
+	num_songs=$(yt-dlp "$url" -I0 -O playlist:playlist_count)
+	echo "Number of songs is $num_songs"
+
+        # Download playlist
+	yt-dlp \
             --cookies-from-browser firefox \
             -x \
             --audio-format mp3 \
@@ -66,7 +72,7 @@ download_playlists() {
     done
 }
 
-
+# Get substring from input 1 of len 1 at chatacter input 2 
 parser(){
 	local string="$1"
 	local charnum="$2"
@@ -95,11 +101,11 @@ main(){
 		case "$output" in
 		 *"$downloading_str"*) 
 			songnum=$(parser "$output" 28)
-			echo "downloading song number:$songnum" 
+			echo "downloading song number:$songnum/$num_songs" 
 		;;	
 		*"$downloaded_str"*)
 			((songnum+=1))
-			echo "downloading song number:$songnum" 
+			echo "downloading song number:$songnum/$num_songs" 
 		;;
 		*"$new_playlist_str"*)
 			songnum=0
@@ -108,4 +114,4 @@ main(){
 }
 
 # ----- Main code -------------------------------------------------------------
-main
+main 
