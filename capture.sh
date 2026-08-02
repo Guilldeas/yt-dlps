@@ -3,11 +3,14 @@
 # Functions
 parser(){
 	local string="$1"
-	echo "${string:28:1}"
+	local charnum="$2"
+	echo "${string:"$charnum":1}"
 }
 
 # Capture other scripts stdout and parse it
-pattern_str="[download] Downloading item "
+downloading_str="[download] Downloading item "
+downloaded_str="has already been recorded in the archive"
+new_playlist_str="[download] Downloading playlist: "
 
 # Run the script and pipe it's stdout and stderr to the read command
 ./download_playlists.sh 2>&1 |
@@ -16,9 +19,16 @@ pattern_str="[download] Downloading item "
 while read -r output; do
 	
 	#Parse output line
-	if [[ "$output" == *"$pattern_str"* ]]; then
-		echo "downloading song number: $(parser "$output")"	
-	else
-		continue
-	fi
+	case "$output" in
+	 *"$downloading_str"*) 
+		songnum=$(parser "$output" 28)
+		echo "downloading song number:$songnum" 
+	;;	
+	*"$downloaded_str"*)
+		((songnum+=1))
+		echo "downloading song number:$songnum" 
+	;;
+	*"$new_playlist_str"*)
+		songnum=0
+	esac
 done
