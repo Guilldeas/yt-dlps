@@ -6,10 +6,7 @@ declare -A list_info_arr
 declare num_songs 
 
 #----- Functions -------------------------------------------------------------
-
-get_config(){
-        local index
-
+json2arr(){
         # Read list genres and urls from json into a temporary file
         jq -r 'keys_unsorted[]' Utils/lists_info_test.json > Utils/tmplists.txt
         jq -r 'values[]' Utils/lists_info_test.json > Utils/tmpurls.txt
@@ -20,11 +17,58 @@ get_config(){
 
         rm Utils/tmplists.txt
         rm Utils/tmpurls.txt
-        
+
         # Write data into array
         for ((index=0; index<"${#genres[@]}"; index++)); do
                 list_info_arr["${genres[index]}"]="${urls[index]}"
         done
+}
+
+check4updates(){
+	# Build json with number of videos in playlist	
+	
+        # Iterate through associative array of genres and urls
+        for genre in "${!list_info_arr[@]}"; do
+                url="${list_info_arr[$genre]}"
+
+		# Find number of videos in playlist
+		num_vids=$(yt-dlp "$url" -I0 -O playlist:playlist_count)
+
+                # If json doesnt exist create it
+                if ! [[ -e num_vids.json ]]; then
+
+                        echo file does not exist
+
+                        # Write one line storing a key value pair
+                        jq --null-input \
+                                --arg key "$genre" \
+                                --arg value "$num_vids" \
+                                '{($key): $value}' > Utils/num_vids.json
+
+                # If json already exists append line to it
+                else
+                        echo file exists
+
+                        jq \
+                                --arg key "$genre" \
+                                --arg value "$url" \
+                                '. += {($key): $value}' Utils/num_vids.json > num_vids.tmp \
+                                && mv num_vids.tmp num_vids.json
+                fi
+        done
+}
+
+get_config(){
+        local index
+
+	# Populate associative array with genres as keys and playlist urls as values
+	json2arr
+	
+	# TO DO: CHECK WHETHER WE NEED TO DOWNLOAD PLAYLISTS BASED ON NUMBER OF
+	# SONGS DOWNLOADED LAST TIME AND SONGS IN PLAYLIST NOW
+	# PRUNE ARRAY WITH LIST INFO AND DOWNLOAD
+	# UPDATE JSON WITH NUMSONGS	
+	check4updates
 }
 
 
@@ -50,9 +94,6 @@ download_playlists() {
     for genre in "${!list_info_arr[@]}"; do
         url="${list_info_arr[$genre]}"
 
-	# Get number of songs in playlist to extract percentage of download completion
-	num_songs=$(yt-dlp "$url" -I0 -O playlist:playlist_count)
-	echo "Number of songs is $num_songs"
 
         # Download playlist
 	yt-dlp \
@@ -80,7 +121,7 @@ parser(){
 }
 
 downloader(){
-	get_config && build_folder_struct && download_playlists
+	get_config && build_folder_struct && download_playlists 
 }
 
 
@@ -91,8 +132,10 @@ main(){
 	local downloaded_str="has already been recorded in the archive"
 	local new_playlist_str="[download] Downloading playlist: "
 
+
 	# Run the download and pipe it's stdout and stderr to the read command
-	downloader 2>&1 |
+	# UNCOMMENT!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+	downloader #2>&1 |
 
 	# Read one line from standard input while treating \ as a character 
 	while read -r output; do
