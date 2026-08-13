@@ -35,7 +35,7 @@ check4updates(){
 		num_vids=$(yt-dlp "$url" -I0 -O playlist:playlist_count)
 
                 # If json doesnt exist create it
-                if ! [[ -e num_vids.json ]]; then
+                if ! [[ -e Utils/num_vids.json ]]; then
 
                         echo file does not exist
 
@@ -51,9 +51,9 @@ check4updates(){
 
                         jq \
                                 --arg key "$genre" \
-                                --arg value "$url" \
-                                '. += {($key): $value}' Utils/num_vids.json > num_vids.tmp \
-                                && mv num_vids.tmp num_vids.json
+                                --arg value "$num_vids" \
+                                '. += {($key): $value}' Utils/num_vids.json > Utils/num_vids.tmp \
+                                && mv Utils/num_vids.tmp Utils/num_vids.json
                 fi
         done
 }
@@ -135,7 +135,7 @@ main(){
 
 	# Run the download and pipe it's stdout and stderr to the read command
 	# UNCOMMENT!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-	downloader #2>&1 |
+	downloader 2>&1 |
 
 	# Read one line from standard input while treating \ as a character 
 	while read -r output; do
