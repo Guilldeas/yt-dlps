@@ -4,6 +4,7 @@
 #----- Variables -------------------------------------------------------------
 declare -A list_info_arr
 declare num_songs 
+first_execution="False"
 
 #----- Functions -------------------------------------------------------------
 json2arr(){
@@ -24,9 +25,11 @@ json2arr(){
         done
 }
 
-check4updates(){
-	# Build json with number of videos in playlist	
+build_num_vids_json(){
+	# Builds json with number of videos in playlist	
 	
+	local json_path=$1
+
         # Iterate through associative array of genres and urls
         for genre in "${!list_info_arr[@]}"; do
                 url="${list_info_arr[$genre]}"
@@ -35,7 +38,7 @@ check4updates(){
 		num_vids=$(yt-dlp "$url" -I0 -O playlist:playlist_count)
 
                 # If json doesnt exist create it
-                if ! [[ -e Utils/num_vids.json ]]; then
+                if ! [[ -e "$json_path" ]]; then
 
                         echo file does not exist
 
@@ -43,7 +46,7 @@ check4updates(){
                         jq --null-input \
                                 --arg key "$genre" \
                                 --arg value "$num_vids" \
-                                '{($key): $value}' > Utils/num_vids.json
+                                '{($key): $value}' > "$json_path"
 
                 # If json already exists append line to it
                 else
@@ -52,10 +55,23 @@ check4updates(){
                         jq \
                                 --arg key "$genre" \
                                 --arg value "$num_vids" \
-                                '. += {($key): $value}' Utils/num_vids.json > Utils/num_vids.tmp \
-                                && mv Utils/num_vids.tmp Utils/num_vids.json
+                                '. += {($key): $value}' "$json_path" > Utils/num_vids.tmp \
+                                && mv Utils/num_vids.tmp "$json_path" 
                 fi
         done
+}
+
+build_diff_json() {
+
+	local json1="$1"
+	local json2="$2"
+	local output="$3"
+
+	jq -n \
+		--slurpfile a "$json1" \
+		--slurpfile b "$json2" \
+		'$b[0] | with_entries(select(.value != $a[0][.key]))' \
+		> "$output"
 }
 
 get_config(){
@@ -64,11 +80,25 @@ get_config(){
 	# Populate associative array with genres as keys and playlist urls as values
 	json2arr
 	
-	# TO DO: CHECK WHETHER WE NEED TO DOWNLOAD PLAYLISTS BASED ON NUMBER OF
-	# SONGS DOWNLOADED LAST TIME AND SONGS IN PLAYLIST NOW
+	# Store numbers of videos on each playlist if it wasnt done before
+	if ! [[ -e Utils/num_vids.json ]]; then
+		echo First execution
+		build_num_vids_json "Utils/num_vids.json"	
+		first_execution="True"
+	fi
+	
+	# Check whether more videos have been added to playlists
+	if [[ "$first_execution" = False ]]; then
+		echo Not first execution
+		build_num_vids_json "Utils/num_vids_current.json" 
+		build_diff_json \
+			"Utils/num_vids.json" \ 	
+			"Utils/num_vids_current.json" \ 	
+			"Utils/num_vids_pruned.json"	
+	fi
+ 
 	# PRUNE ARRAY WITH LIST INFO AND DOWNLOAD
 	# UPDATE JSON WITH NUMSONGS	
-	check4updates
 }
 
 
@@ -135,7 +165,7 @@ main(){
 
 	# Run the download and pipe it's stdout and stderr to the read command
 	# UNCOMMENT!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-	downloader 2>&1 |
+	downloader #2>&1 |
 
 	# Read one line from standard input while treating \ as a character 
 	while read -r output; do
