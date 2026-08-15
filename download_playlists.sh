@@ -5,12 +5,15 @@
 declare -A list_info_arr
 declare num_songs 
 first_execution="False"
+pruned_playlists="False"
 
 #----- Functions -------------------------------------------------------------
 json2arr(){
+	local json_path=$1
+
         # Read list genres and urls from json into a temporary file
-        jq -r 'keys_unsorted[]' Utils/lists_info_test.json > Utils/tmplists.txt
-        jq -r 'values[]' Utils/lists_info_test.json > Utils/tmpurls.txt
+        jq -r 'keys_unsorted[]' "$json_path" > Utils/tmplists.txt
+        jq -r 'values[]' "$json_path" > Utils/tmpurls.txt
 
         # Create array from tmp file
         mapfile -t genres < Utils/tmplists.txt
@@ -61,7 +64,8 @@ build_num_vids_json(){
         done
 }
 
-build_diff_json() {
+build_pruned_json() {
+	# Takes two jsons and builds a third one with only the values that changed
 
 	local json1="$1"
 	local json2="$2"
@@ -74,11 +78,26 @@ build_diff_json() {
 		> "$output"
 }
 
+populate_pruned_urls_json() {
+
+        local pruned_json="$1"
+        local urls_json="$2"
+        local output="$3"
+
+        jq -n \
+                --slurpfile pruned "$pruned_json" \
+                --slurpfile urls "$urls_json" \
+                '$pruned[0] | with_entries(.value = $urls[0][.key])' \
+                > "$output"
+
+	pruned_playlists="True"	
+}
+
 get_config(){
         local index
 
 	# Populate associative array with genres as keys and playlist urls as values
-	json2arr
+	json2arr "Utils/lists_info_test.json"
 	
 	# Store numbers of videos on each playlist if it wasnt done before
 	if ! [[ -e Utils/num_vids.json ]]; then
@@ -90,11 +109,21 @@ get_config(){
 	# Check whether more videos have been added to playlists
 	if [[ "$first_execution" = False ]]; then
 		echo Not first execution
+		
+		# Find how many videos are in playlists
 		build_num_vids_json "Utils/num_vids_current.json" 
-		build_diff_json \
-			"Utils/num_vids.json" \ 	
-			"Utils/num_vids_current.json" \ 	
-			"Utils/num_vids_pruned.json"	
+		
+		# Keep only genre, num_videos pairs that have been updated
+		build_pruned_json \
+			"Utils/num_vids.json" \
+			"Utils/num_vids_current.json" \
+			"Utils/num_vids_pruned.json"
+
+		# populate pruned list with urls instead of num_vids
+		populate_pruned_urls_json\
+			"Utils/num_vids_pruned.json" \
+			"Utils/lists_info_test.json" \
+			"Utils/lists_info_pruned.json"
 	fi
  
 	# PRUNE ARRAY WITH LIST INFO AND DOWNLOAD
@@ -118,29 +147,35 @@ build_folder_struct(){
 
 
 download_playlists() {
-    local genre
-    local url
+	local genre
+	local url
 
-    for genre in "${!list_info_arr[@]}"; do
-        url="${list_info_arr[$genre]}"
+	if [[ "$pruned_playlists" = True ]]; then
+		json2arr "Utils/lists_info_pruned.json"
+		echo "pruned-----------------------"
+	else
+		json2arr "Utils/lists_info_test.json"
+	fi
+	
+	for genre in "${!list_info_arr[@]}"; do
+		url="${list_info_arr[$genre]}"
 
-
-        # Download playlist
-	yt-dlp \
-            --cookies-from-browser firefox \
-            -x \
-            --audio-format mp3 \
-            --add-metadata \
-            --embed-thumbnail \
-            --convert-thumbnails jpg \
-            --parse-metadata "playlist_index:%(track_number)s" \
-            -o "$genre/%(playlist_index)03d - %(title)s.%(ext)s" \
-            --download-archive "$genre/archive.txt" \
-	    --fragment-retries infinite \
-            --retry-sleep fragment:exp=1:30 \
-            --postprocessor-args "-metadata genre=$genre" \
-            "$url"
-    done
+		# Download 
+		yt-dlp \
+		--cookies-from-browser firefox \
+		-x \
+		--audio-format mp3 \
+		--add-metadata \
+		--embed-thumbnail \
+		--convert-thumbnails jpg \
+		--parse-metadata "playlist_index:%(track_number)s" \
+		-o "$genre/%(playlist_index)03d - %(title)s.%(ext)s" \
+		--download-archive "$genre/archive.txt" \
+		--fragment-retries infinite \
+		--retry-sleep fragment:exp=1:30 \
+		--postprocessor-args "-metadata genre=$genre" \
+		"$url"
+	done
 }
 
 # Get substring from input 1 of len 1 at chatacter input 2 
