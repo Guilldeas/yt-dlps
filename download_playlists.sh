@@ -6,10 +6,14 @@ declare -A list_info_arr
 declare num_songs 
 first_execution="False"
 pruned_playlists="False"
+verbose="True"
 
 #----- Functions -------------------------------------------------------------
 json2arr(){
 	local json_path=$1
+
+        # Clear previous contents
+        list_info_arr=()
 
         # Read list genres and urls from json into a temporary file
         jq -r 'keys_unsorted[]' "$json_path" > Utils/tmplists.txt
@@ -25,6 +29,10 @@ json2arr(){
         # Write data into array
         for ((index=0; index<"${#genres[@]}"; index++)); do
                 list_info_arr["${genres[index]}"]="${urls[index]}"
+		if [[ "$verbose" = "True" ]]; then
+			echo "${genres[index]}"
+			echo "${urls[index]}"
+		fi
         done
 }
 
@@ -125,9 +133,8 @@ get_config(){
 			"Utils/lists_info_test.json" \
 			"Utils/lists_info_pruned.json"
 	fi
- 
-	# PRUNE ARRAY WITH LIST INFO AND DOWNLOAD
-	# UPDATE JSON WITH NUMSONGS	
+	# IM NOT UPDATING THE PREVIOUS AND NEW LIST AT THE END OF CODE EXEC
+
 }
 
 
@@ -153,10 +160,21 @@ download_playlists() {
 	if [[ "$pruned_playlists" = True ]]; then
 		json2arr "Utils/lists_info_pruned.json"
 		echo "pruned-----------------------"
+
+		# REMOVE LATER TROUBLESHOOTING
+		for ((index=0; index<"${#list_info_arr[@]}"; index++)); do
+			echo "${list_info_arr[index]}"
+		done
 	else
 		json2arr "Utils/lists_info_test.json"
 	fi
 	
+	# If there is nothing to output break out of function
+	if (( "${#list_info_arr[@]}" == 0 )); then
+		echo "Nothing to download"
+		return 1
+	fi	
+
 	for genre in "${!list_info_arr[@]}"; do
 		url="${list_info_arr[$genre]}"
 
@@ -200,7 +218,7 @@ main(){
 
 	# Run the download and pipe it's stdout and stderr to the read command
 	# UNCOMMENT!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-	downloader #2>&1 |
+	downloader 2>&1 |
 
 	# Read one line from standard input while treating \ as a character 
 	while read -r output; do
@@ -219,6 +237,10 @@ main(){
 			songnum=0
 		esac
 	done
+	
+	# Remove temporary files and update lists
+	mv Utils/num_vids_current.json Utils/num_vids.json
+	rm Utils/num_vids_pruned.json Utils/lists_info_pruned.json
 }
 
 # ----- Main code -------------------------------------------------------------
