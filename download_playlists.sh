@@ -10,10 +10,13 @@ verbose="True"
 
 #----- Functions -------------------------------------------------------------
 json2arr(){
+	# Takes a json relative path and outputs its content into
+	# an associative array given as a name in the second input
 	local json_path=$1
+	local -n output_arr=$2
 
         # Clear previous contents
-        list_info_arr=()
+        output_arr=()
 
         # Read list genres and urls from json into a temporary file
         jq -r 'keys_unsorted[]' "$json_path" > Utils/tmplists.txt
@@ -28,7 +31,7 @@ json2arr(){
 
         # Write data into array
         for ((index=0; index<"${#genres[@]}"; index++)); do
-                list_info_arr["${genres[index]}"]="${urls[index]}"
+                output_arr["${genres[index]}"]="${urls[index]}"
 		if [[ "$verbose" = "True" ]]; then
 			echo "${genres[index]}"
 			echo "${urls[index]}"
@@ -105,7 +108,7 @@ get_config(){
         local index
 
 	# Populate associative array with genres as keys and playlist urls as values
-	json2arr "Utils/lists_info_test.json"
+	json2arr "Utils/lists_info_test.json" "list_info_arr"
 	
 	# Store numbers of videos on each playlist if it wasnt done before
 	if ! [[ -e Utils/num_vids.json ]]; then
@@ -158,7 +161,7 @@ download_playlists() {
 	local url
 
 	if [[ "$pruned_playlists" = True ]]; then
-		json2arr "Utils/lists_info_pruned.json"
+		json2arr "Utils/lists_info_pruned.json" "list_info_arr"
 		echo "pruned-----------------------"
 
 		# REMOVE LATER TROUBLESHOOTING
@@ -166,7 +169,7 @@ download_playlists() {
 			echo "${list_info_arr[index]}"
 		done
 	else
-		json2arr "Utils/lists_info_test.json"
+		json2arr "Utils/lists_info_test.json" "list_info_arr"
 	fi
 	
 	# If there is nothing to output break out of function
@@ -196,8 +199,12 @@ download_playlists() {
 	done
 }
 
-# Get substring from input 1 of len 1 at chatacter input 2 
 parser(){
+	# Get substring from input 1 of len 1 at chatacter input 2 
+	# TO FIX: BIGGER NUMBERS THAN 9 ARE NOT PROPERLY PARSED
+	# PARSE THEM PROPERLY, BOTH THE CURRENT AND TOTAL AMOUNT OF
+	# SONGS ARE PRESENT IN THE TITLE AND CAN BE USED TO CREATE
+	# A PERCENTAGE OF COMPLETION LATER
 	local string="$1"
 	local charnum="$2"
 	echo "${string:"$charnum":1}"
@@ -214,7 +221,7 @@ main(){
 	local downloading_str="[download] Downloading item "
 	local downloaded_str="has already been recorded in the archive"
 	local new_playlist_str="[download] Downloading playlist: "
-
+	declare songnum=0
 
 	# Run the download and pipe it's stdout and stderr to the read command
 	# UNCOMMENT!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -233,14 +240,22 @@ main(){
 			((songnum+=1))
 			echo "downloading song number:$songnum/$num_songs" 
 		;;
+		*"Nothing to download"*)
+			echo "$output"
+		;;
 		*"$new_playlist_str"*)
 			songnum=0
+			echo "$output" 
 		esac
 	done
 	
+	echo "Finished downloading playlists"
+
 	# Remove temporary files and update lists
-	mv Utils/num_vids_current.json Utils/num_vids.json
-	rm Utils/num_vids_pruned.json Utils/lists_info_pruned.json
+	if [[ "$first_execution" = False ]]; then
+		mv Utils/num_vids_current.json Utils/num_vids.json
+		rm Utils/num_vids_pruned.json Utils/lists_info_pruned.json
+	fi
 }
 
 # ----- Main code -------------------------------------------------------------
