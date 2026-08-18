@@ -6,7 +6,13 @@ declare -A list_info_arr
 declare num_songs 
 first_execution="False"
 pruned_playlists="False"
-verbose="True"
+
+# Default variable for verbose (controlling debugging echos) is False unless user specifies something else
+if [ -z $1  ]; then
+	verbose="False"
+else
+	verbose=$1
+fi
 
 #----- Functions -------------------------------------------------------------
 json2arr(){
@@ -200,14 +206,20 @@ download_playlists() {
 }
 
 parser(){
-	# Get substring from input 1 of len 1 at chatacter input 2 
-	# TO FIX: BIGGER NUMBERS THAN 9 ARE NOT PROPERLY PARSED
-	# PARSE THEM PROPERLY, BOTH THE CURRENT AND TOTAL AMOUNT OF
-	# SONGS ARE PRESENT IN THE TITLE AND CAN BE USED TO CREATE
-	# A PERCENTAGE OF COMPLETION LATER
+	# Take a specific string and parse two words out of it at
+	# positions given by input. It returns both words on a string
+
 	local string="$1"
-	local charnum="$2"
-	echo "${string:"$charnum":1}"
+	local word_1="$2"
+	local word_2="$3"
+	local -n words_1_2_arr="$4"
+	words_1_2_arr=()
+
+	# Read each word into a string separating by whitespaces
+	read -r -a words_arr <<< "${string}" 
+	words_1_2_arr[0]="${words_arr[$word_1]}"
+	words_1_2_arr[1]="${words_arr[$word_2]}"
+	
 }
 
 downloader(){
@@ -221,24 +233,34 @@ main(){
 	local downloading_str="[download] Downloading item "
 	local downloaded_str="has already been recorded in the archive"
 	local new_playlist_str="[download] Downloading playlist: "
+	local parsed_data=()
 	declare songnum=0
 
 	# Run the download and pipe it's stdout and stderr to the read command
-	# UNCOMMENT!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 	downloader 2>&1 |
 
 	# Read one line from standard input while treating \ as a character 
 	while read -r output; do
 		
+		if [[ "$verbose" = "True" ]]; then
+			echo "$output"
+			echo
+		fi
+		
 		#Parse output line
 		case "$output" in
 		 *"$downloading_str"*) 
-			songnum=$(parser "$output" 28)
-			echo "downloading song number:$songnum/$num_songs" 
+			parser "$output" 3 5 "parsed_data"
+			current_song="${parsed_data[0]}"
+			list_songs="${parsed_data[1]}"
+			echo "downloading song number:$current_song/$list_songs" 
 		;;	
 		*"$downloaded_str"*)
 			((songnum+=1))
-			echo "downloading song number:$songnum/$num_songs" 
+			parser "$output" 3 5 "parsed_data"
+			current_song="${parsed_data[0]}"
+			list_songs="${parsed_data[1]}"
+			echo "already downloaded song" 
 		;;
 		*"Nothing to download"*)
 			echo "$output"
@@ -259,4 +281,4 @@ main(){
 }
 
 # ----- Main code -------------------------------------------------------------
-main 
+main
