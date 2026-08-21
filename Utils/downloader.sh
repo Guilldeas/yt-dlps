@@ -94,7 +94,7 @@ get_config(){
 		echo Not first execution
 		
 		# Find how many videos are in playlists
-		./build_num_vids_json.sh "Utils/num_vids_current.json" 
+		./Utils/build_num_vids.sh "Utils/num_vids_current.json" 
 		
 		# Keep only genre, num_videos pairs that have been updated
 		build_pruned_json \

@@ -96,7 +96,7 @@ main(){
 	local parsed_playlist=()
 	declare songnum=0
 	declare -A num_lists_arr
-	local verbose="False"
+	local verbose="True"
 	local first_execution="False"
 	local playlist_index=0
 	declare -a genres_list
@@ -178,9 +178,7 @@ main(){
 		;;
 		*"$new_playlist_str"*)
 			
-			# WE NEED TO GET THE GENRE FROM num_vids-json
-			#parser "$output" 3 0 "parsed_playlist"
-			#genre="${parsed_playlist[0]}"
+			# THIS ITERATING BREAKS WHEN WE PRUNE PLAYLISTS
 			genre="${genres_list["$playlist_index"]}"
 			((playlist_index++))
 			songnum=0
