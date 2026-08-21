@@ -36,20 +36,26 @@ print_bar(){
 	local current_song=$1
 	local list_songs=$2
 	local genre=$3
+	local max_genre_len=$4
 
 	local perc_done=$((100*$current_song/$list_songs))
 
 	local fill_char="■"
-	local empty_char="▩"
+	local empty_char="▨"
 	local bar_str=()
 
 	# Get length of loading bar
-	local genre_len=${#genre}
 	local columns=$(tput cols)
 	local list_str_len=${#list_songs}
 
+	# Pad genre so that loading bars are alligned
+	local genre_str_len=${#genre}
+	local pad_len=$(($max_genre_len-$genre_str_len))
+	for ((index=0; index<"$pad_len"; index++)); do
+		genre+=" "
+	done
 	# terminal width minus length of genre, chars and max len of ratio
-	local bar_len=$(($columns-$genre_len-2*$list_str_len-11))
+	local bar_len=$(($columns-$max_genre_len-2*$list_str_len-11))
 
 	# Fill loading bar
 	local index
@@ -92,8 +98,10 @@ main(){
 	declare -A num_lists_arr
 	local verbose="False"
 	local first_execution="False"
-
-
+	local playlist_index=0
+	declare -a genres_list
+	local list_str_len=0
+	local max_str_len=0
 
 	# Draw first frame of CLI
 	
@@ -107,13 +115,24 @@ main(){
 	fi
 	json2arr "Utils/num_vids.json" "num_lists_arr"	
 
+	# Get genres input by user into an indexed array to update bars later
+	genres_list=("${!num_lists_arr[@]}")
+
+	# Get maximum str length of genres to pass to print_bar and line them up nice
+	for genre_str in "${!num_lists_arr[@]}"; do 
+		list_str_len=${#genre_str}
+		if [[ $list_str_len -ge $max_str_len ]]; then
+			max_str_len=$list_str_len
+		fi
+	done
+
 	# Iterate through genres creating empty loading bars
 	cursor_line=0
 	echo "Downloading Playlists"
 	((cursor_line++))
 	local genre 
 	for genre in "${!num_lists_arr[@]}"; do
-		print_bar "0" "${num_lists_arr[$genre]}" "$genre"
+		print_bar "0" "${num_lists_arr[$genre]}" "$genre" "$max_str_len"
 		printf "\n"
 		((cursor_line++))	
 	done
@@ -121,6 +140,8 @@ main(){
 	# Return to the first line
 	printf "\x1B[${cursor_line}A"	
 	cursor_line=0
+
+	
 
 	# Run the download and pipe it's stdout and stderr to the read command
 	./Utils/downloader.sh "$first_execution" 2>&1 |
@@ -142,7 +163,8 @@ main(){
 			print_bar \
 				"$current_song" \
 				"$list_songs" \
-				"$genre"
+				"$genre" \
+				"$max_str_len"
 		;;	
 		*"$downloaded_str"*)
 			((songnum+=1))
@@ -155,9 +177,12 @@ main(){
 			#echo "$output"
 		;;
 		*"$new_playlist_str"*)
-
-			parser "$output" 3 0 "parsed_playlist"
-			genre="${parsed_playlist[0]}"
+			
+			# WE NEED TO GET THE GENRE FROM num_vids-json
+			#parser "$output" 3 0 "parsed_playlist"
+			#genre="${parsed_playlist[0]}"
+			genre="${genres_list["$playlist_index"]}"
+			((playlist_index++))
 			songnum=0
 			
 			# Move cursor down by one line to prepare for bar printing
