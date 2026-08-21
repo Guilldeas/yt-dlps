@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
+#set -x
 
 
 #----- Variables -------------------------------------------------------------
 declare -A list_info_arr
 declare num_songs 
-first_execution="False"
+first_execution=$1
 pruned_playlists="False"
 
 # Default variable for verbose (controlling debugging echos) is False unless user specifies something else
@@ -45,41 +46,6 @@ json2arr(){
         done
 }
 
-build_num_vids_json(){
-	# Builds json with number of videos in playlist	
-	
-	local json_path=$1
-
-        # Iterate through associative array of genres and urls
-        for genre in "${!list_info_arr[@]}"; do
-                url="${list_info_arr[$genre]}"
-
-		# Find number of videos in playlist
-		num_vids=$(yt-dlp "$url" -I0 -O playlist:playlist_count)
-
-                # If json doesnt exist create it
-                if ! [[ -e "$json_path" ]]; then
-
-                        echo file does not exist
-
-                        # Write one line storing a key value pair
-                        jq --null-input \
-                                --arg key "$genre" \
-                                --arg value "$num_vids" \
-                                '{($key): $value}' > "$json_path"
-
-                # If json already exists append line to it
-                else
-                        echo file exists
-
-                        jq \
-                                --arg key "$genre" \
-                                --arg value "$num_vids" \
-                                '. += {($key): $value}' "$json_path" > Utils/num_vids.tmp \
-                                && mv Utils/num_vids.tmp "$json_path" 
-                fi
-        done
-}
 
 build_pruned_json() {
 	# Takes two jsons and builds a third one with only the values that changed
@@ -117,18 +83,18 @@ get_config(){
 	json2arr "Utils/lists_info_test.json" "list_info_arr"
 	
 	# Store numbers of videos on each playlist if it wasnt done before
-	if ! [[ -e Utils/num_vids.json ]]; then
-		echo First execution
-		build_num_vids_json "Utils/num_vids.json"	
-		first_execution="True"
-	fi
+	#if [[ $first_execution = "True"]]; then
+		#echo First execution
+		#./build_num_vids_json.sh "Utils/num_vids.json"	
+		#first_execution="True"
+	#fi
 	
 	# Check whether more videos have been added to playlists
 	if [[ "$first_execution" = False ]]; then
 		echo Not first execution
 		
 		# Find how many videos are in playlists
-		build_num_vids_json "Utils/num_vids_current.json" 
+		./build_num_vids_json.sh "Utils/num_vids_current.json" 
 		
 		# Keep only genre, num_videos pairs that have been updated
 		build_pruned_json \
@@ -205,80 +171,5 @@ download_playlists() {
 	done
 }
 
-parser(){
-	# Take a specific string and parse two words out of it at
-	# positions given by input. It returns both words on a string
 
-	local string="$1"
-	local word_1="$2"
-	local word_2="$3"
-	local -n words_1_2_arr="$4"
-	words_1_2_arr=()
-
-	# Read each word into a string separating by whitespaces
-	read -r -a words_arr <<< "${string}" 
-	words_1_2_arr[0]="${words_arr[$word_1]}"
-	words_1_2_arr[1]="${words_arr[$word_2]}"
-	
-}
-
-downloader(){
-	get_config && build_folder_struct && download_playlists 
-}
-
-
-main(){
-
-	# Capture other scripts stdout and parse it
-	local downloading_str="[download] Downloading item "
-	local downloaded_str="has already been recorded in the archive"
-	local new_playlist_str="[download] Downloading playlist: "
-	local parsed_data=()
-	declare songnum=0
-
-	# Run the download and pipe it's stdout and stderr to the read command
-	downloader 2>&1 |
-
-	# Read one line from standard input while treating \ as a character 
-	while read -r output; do
-		
-		if [[ "$verbose" = "True" ]]; then
-			echo "$output"
-			echo
-		fi
-		
-		#Parse output line
-		case "$output" in
-		 *"$downloading_str"*) 
-			parser "$output" 3 5 "parsed_data"
-			current_song="${parsed_data[0]}"
-			list_songs="${parsed_data[1]}"
-			echo "downloading song number:$current_song/$list_songs" 
-		;;	
-		*"$downloaded_str"*)
-			((songnum+=1))
-			parser "$output" 3 5 "parsed_data"
-			current_song="${parsed_data[0]}"
-			list_songs="${parsed_data[1]}"
-			echo "already downloaded song" 
-		;;
-		*"Nothing to download"*)
-			echo "$output"
-		;;
-		*"$new_playlist_str"*)
-			songnum=0
-			echo "$output" 
-		esac
-	done
-	
-	echo "Finished downloading playlists"
-
-	# Remove temporary files and update lists
-	if [[ "$first_execution" = False ]]; then
-		mv Utils/num_vids_current.json Utils/num_vids.json
-		rm Utils/num_vids_pruned.json Utils/lists_info_pruned.json
-	fi
-}
-
-# ----- Main code -------------------------------------------------------------
-main
+get_config && build_folder_struct && download_playlists 

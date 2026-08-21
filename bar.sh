@@ -37,4 +37,3 @@ for ((i=0; i<=100; i++));do
 	print_bar "$i" 100 "This is a long name"
 	sleep 0.1
 done
-echo
