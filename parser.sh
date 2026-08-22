@@ -92,11 +92,11 @@ main(){
 	local downloading_str="[download] Downloading item "
 	local downloaded_str="has already been recorded in the archive"
 	local new_playlist_str="[download] Downloading playlist: "
+	local skipped_playlist_str="Skipping the following list:"
 	local parsed_data=()
 	local parsed_playlist=()
-	declare songnum=0
 	declare -A num_lists_arr
-	local verbose="True"
+	local verbose=$1
 	local first_execution="False"
 	local playlist_index=0
 	declare -a genres_list
@@ -144,7 +144,7 @@ main(){
 	
 
 	# Run the download and pipe it's stdout and stderr to the read command
-	./Utils/downloader.sh "$first_execution" 2>&1 |
+	./Utils/downloader.sh "$first_execution" "$verbose" 2>&1 |
 
 	# Read one line from standard input while treating \ as a character 
 	while read -r output; do
@@ -157,6 +157,8 @@ main(){
 		#Parse output line
 		case "$output" in
 		 *"$downloading_str"*) 
+
+			# Parse data from captured output and update loading bar
 			parser "$output" 3 5 "parsed_data"
 			current_song="${parsed_data[0]}"
 			list_songs="${parsed_data[1]}"
@@ -167,26 +169,37 @@ main(){
 				"$max_str_len"
 		;;	
 		*"$downloaded_str"*)
-			((songnum+=1))
+
 			parser "$output" 3 5 "parsed_data"
 			current_song="${parsed_data[0]}"
 			list_songs="${parsed_data[1]}"
-			#echo "already downloaded song" 
+			# ¿Color bar differently when skipped track? 
 		;;
 		*"Nothing to download"*)
 			#echo "$output"
 		;;
 		*"$new_playlist_str"*)
 			
-			# THIS ITERATING BREAKS WHEN WE PRUNE PLAYLISTS
 			genre="${genres_list["$playlist_index"]}"
 			((playlist_index++))
-			songnum=0
 			
 			# Move cursor down by one line to prepare for bar printing
 			printf "\x1B[1B"
 			((cursor_line++))
 			#echo "$output" 
+		;;
+		*"$skipped_playlist_str"*)
+
+			((playlist_index++))	
+			
+			# Move cursor down by one line to prepare for bar printing
+			printf "\x1B[1B"
+			((cursor_line++))
+			
+			# Get skipped genre from captured output
+			parser "$output" 4 0 "parsed_genre"
+			skipped_genre="${parsed_genre[0]}"
+			echo -ne "$skipped_genre: Skipped playlist. No new songs to download\r"
 		esac
 	done
 	
@@ -203,4 +216,5 @@ main(){
 	fi
 }
 
-main
+verbose=$1
+main "$verbose"

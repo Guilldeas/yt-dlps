@@ -102,7 +102,7 @@ download_playlists() {
 			# Inform the parser we are skipping this list
 			# to report on TUI
 			if [[ $kept_genre_bool == "False" ]]; then
-				echo " -------------------- Skipping the following list: $genre"
+				echo "Skipping the following list: $genre"
 			
 			# If the list needs downloading we call the yt command
 			else
