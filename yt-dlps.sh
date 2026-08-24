@@ -31,43 +31,125 @@ json2arr(){
         done
 }
 
+color_str(){
+	# Takes a string on given on its 2nd arg and colors it according 
+	# to the 3rd arg, colored string is returned on its 1st nameref arg 
+	
+	local -n return_string=$1
+	local input_string=$2
+	local color=$3
+
+	color_green="\x1B[32m"
+	color_blue="\x1B[34m"
+	color_red="\x1B[31m"
+	color_reset="\x1B[0m"
+
+	case "$color" in
+	*"green"*)
+		return_string=$color_green$input_string$color_reset
+	;;
+	*"red"*)
+		return_string=$color_red$input_string$color_reset
+	;;	
+	*"blue"*)
+		return_string=$color_blue$input_string$color_reset
+	;;	
+	esac
+}
 
 print_bar(){
 	local current_song=$1
 	local list_songs=$2
 	local genre=$3
 	local max_genre_len=$4
+	local skipped_playlist=$5
 
-	local perc_done=$((100*$current_song/$list_songs))
-
+	# Variables for customizing terminal output
 	local fill_char="■"
 	local empty_char="▨"
-	local bar_str=()
+	local skipped_playlist_empty_char="·"
+	local skipped_str="Nothing to download since previous execution"
+
+	# Colorize variables
+	local fill_char_downloaded
+	color_str "fill_char_downloaded" "$fill_char" "green"
 
 	# Get length of loading bar
+	local bar_str=()
 	local columns=$(tput cols)
 	local list_str_len=${#list_songs}
 
-	# Pad genre so that loading bars are alligned
+	# Pad string on first column so that data is alligned
 	local genre_str_len=${#genre}
-	local pad_len=$(($max_genre_len-$genre_str_len))
+	local pad_len=$(( $max_genre_len - $genre_str_len ))
+	local index=0
 	for ((index=0; index<"$pad_len"; index++)); do
 		genre+=" "
 	done
-	# terminal width minus length of genre, chars and max len of ratio
-	local bar_len=$(($columns-$max_genre_len-2*$list_str_len-11))
+
+	# Compute percentage of completion for playlist
+	local perc_done=$((100*$current_song/$list_songs))
+
+	# Pad string for song fraction column
+	frac_done_str="($current_song/$list_songs)"
+	frac_done_str_len=${#frac_done_str}
+	local -i max_frac_len=11
+	local -i pad_len=$(( $max_frac_len - $frac_done_str_len ))
+	local pad=""
+	for ((index=0; index<"$pad_len"; index++)); do
+		pad+=" "
+	done
+	frac_done_str=$pad$frac_done_str
+
+	# Pad string for download completion column
+	perc_done_str="$perc_done%"
+	perc_done_str_len=${#perc_done_str}
+	local -i max_perc_len=6
+	pad_len=$(( $max_perc_len - $perc_done_str_len ))
+	pad=""
+	for ((index=0; index<"$pad_len"; index++)); do
+		pad+=" "
+	done
+	perc_done_str=$pad$perc_done_str
+
+	# Combine columns on both sides to adjust length of loading bar
+	local right_bar_str="$frac_done_str$perc_done_str"	
+	local left_bar_str="$genre "	
+	local right_bar_str_len="${#right_bar_str}"	
+	local left_bar_str_len="${#left_bar_str}"	
+
+	# Terminal width minus length of text to it's right and left plus cheeky magic num 
+	local bar_len=$(( $columns - $right_bar_str_len - $left_bar_str_len - 1 ))
+
+	# If we need to draw a skipped playlist bar we exit early
+	if [[ $skipped_playlist == "True" ]]; then
+		
+		# Pad loading bar	
+		local len_skipped_str=${#skipped_str}
+		local side_padding
+		local -i side_padding_len=$(( ($bar_len - $len_skipped_str) / 2 ))
+		for ((index=0; index<=$side_padding_len; index++)); do
+			side_padding+="$skipped_playlist_empty_char"
+		done
+
+		# Color bar before printing
+		bar_str="$side_padding$skipped_str$side_padding"
+		color_str "bar_str" "$bar_str" "blue"
+		echo -ne "$left_bar_str$bar_str$right_bar_str\r"
+
+		return
+	fi
 
 	# Fill loading bar
-	local index
 	for ((index=0; index<="$bar_len"; index++)); do
 		if ((index < $bar_len*$perc_done/100)); then
-			bar_str+="$fill_char"
+			bar_str+="$fill_char_downloaded"
 		else
 			bar_str+="$empty_char"
 		fi
 	done
 
-	echo -ne "$genre $bar_str ($current_song/$list_songs) $perc_done%\r"
+	echo -ne "$left_bar_str$bar_str$right_bar_str\r"
 }
 
 parser(){
@@ -106,13 +188,17 @@ main(){
 	# Draw first frame of CLI
 	
 	# Hide cursor
-	#printf "\x1B[?25l"
+	printf "\x1B[?25l"
 	
 	# Get info for amount of media to download for initial frame
 	if ! [[ -e Utils/num_vids.json ]]; then
 		first_execution="True"
 		./Utils/build_num_vids.sh "Utils/num_vids.json" > /dev/null 2>&1 
 	fi
+
+	# TODO: Constructing the first frame from num_vids means that we erroneosly
+	# report the amount of tracks to download until it's the turn to download
+	# that playlist.
 	json2arr "Utils/num_vids.json" "num_lists_arr"	
 
 	# Get genres input by user into an indexed array to update bars later
@@ -132,7 +218,7 @@ main(){
 	((cursor_line++))
 	local genre 
 	for genre in "${!num_lists_arr[@]}"; do
-		print_bar "0" "${num_lists_arr[$genre]}" "$genre" "$max_str_len"
+		print_bar "0" "${num_lists_arr[$genre]}" "$genre" "$max_str_len" "False"
 		printf "\n"
 		((cursor_line++))	
 	done
@@ -140,8 +226,6 @@ main(){
 	# Return to the first line
 	printf "\x1B[${cursor_line}A"	
 	cursor_line=0
-
-	
 
 	# Run the download and pipe it's stdout and stderr to the read command
 	./Utils/downloader.sh "$first_execution" "$verbose" 2>&1 |
@@ -166,7 +250,8 @@ main(){
 				"$current_song" \
 				"$list_songs" \
 				"$genre" \
-				"$max_str_len"
+				"$max_str_len" \
+				"False"
 		;;	
 		*"$downloaded_str"*)
 
@@ -199,7 +284,13 @@ main(){
 			# Get skipped genre from captured output
 			parser "$output" 4 0 "parsed_genre"
 			skipped_genre="${parsed_genre[0]}"
-			echo -ne "$skipped_genre: Skipped playlist. No new songs to download\r"
+			print_bar \
+				"1" \
+				"1" \
+				"$skipped_genre" \
+				"$max_str_len" \
+				"True"
+			#echo -ne "$skipped_genre: Skipped playlist. No new songs to download\r"
 		esac
 	done
 	
@@ -217,4 +308,7 @@ main(){
 }
 
 verbose=$1
+if [[ -z $1 ]]; then
+	verbose="False"
+fi
 main "$verbose"
