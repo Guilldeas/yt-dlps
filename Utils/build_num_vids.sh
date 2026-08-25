@@ -38,7 +38,7 @@ json2arr(){
         done
 }
 
-json2arr "Utils/lists_info_test.json" "list_info_arr"
+json2arr "Utils/lists_info.json" "list_info_arr"
 
 # Iterate through associative array of genres and urls
 for genre in "${!list_info_arr[@]}"; do

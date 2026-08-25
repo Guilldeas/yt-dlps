@@ -80,7 +80,7 @@ get_config(){
         local index
 
 	# Populate associative array with genres as keys and playlist urls as values
-	json2arr "Utils/lists_info_test.json" "list_info_arr"
+	json2arr "Utils/lists_info.json" "list_info_arr"
 	
 	# Store numbers of videos on each playlist if it wasnt done before
 	#if [[ $first_execution = "True"]]; then
@@ -94,7 +94,7 @@ get_config(){
 		echo Not first execution
 		
 		# Find how many videos are in playlists
-		./Utils/build_num_vids.sh "Utils/num_vids_current.json" 
+		bash ./Utils/build_num_vids.sh "Utils/num_vids_current.json" 
 		
 		# Keep only genre, num_videos pairs that have been updated
 		build_pruned_json \
@@ -105,7 +105,7 @@ get_config(){
 		# populate pruned list with urls instead of num_vids
 		populate_pruned_urls_json\
 			"Utils/num_vids_pruned.json" \
-			"Utils/lists_info_test.json" \
+			"Utils/lists_info.json" \
 			"Utils/lists_info_pruned.json"
 	fi
 	# IM NOT UPDATING THE PREVIOUS AND NEW LIST AT THE END OF CODE EXEC
@@ -141,7 +141,7 @@ download_playlists() {
 			echo "${list_info_arr[index]}"
 		done
 	else
-		json2arr "Utils/lists_info_test.json" "list_info_arr"
+		json2arr "Utils/lists_info.json" "list_info_arr"
 	fi
 	
 	# If there is nothing to output break out of function
@@ -206,7 +206,7 @@ download_playlists_v2() {
 	fi
 
 	# We iterate through the whole set of lists
-	json2arr "Utils/lists_info_test.json" "list_info_arr"
+	json2arr "Utils/lists_info.json" "list_info_arr"
 
 	for genre in "${!list_info_arr[@]}"; do
 		url="${list_info_arr[$genre]}"

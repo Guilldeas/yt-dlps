@@ -32,7 +32,7 @@ json2arr(){
 }
 
 color_str(){
-	# Takes a string on given on its 2nd arg and colors it according 
+	# Takes a string given on its 2nd arg and colors it according 
 	# to the 3rd arg, colored string is returned on its 1st nameref arg 
 	
 	local -n return_string=$1
@@ -62,17 +62,14 @@ print_bar(){
 	local list_songs=$2
 	local genre=$3
 	local max_genre_len=$4
-	local skipped_playlist=$5
+	local bar_type=$5
 
 	# Variables for customizing terminal output
 	local fill_char="■"
 	local empty_char="▨"
 	local skipped_playlist_empty_char="·"
 	local skipped_str="Nothing to download since previous execution"
-
-	# Colorize variables
-	local fill_char_downloaded
-	color_str "fill_char_downloaded" "$fill_char" "green"
+	local fill_char_colored
 
 	# Get length of loading bar
 	local bar_str=()
@@ -122,13 +119,13 @@ print_bar(){
 	local bar_len=$(( $columns - $right_bar_str_len - $left_bar_str_len - 1 ))
 
 	# If we need to draw a skipped playlist bar we exit early
-	if [[ $skipped_playlist == "True" ]]; then
+	if [[ $bar_type == "skipped_playlist" ]]; then
 		
 		# Pad loading bar	
 		local len_skipped_str=${#skipped_str}
 		local side_padding
 		local -i side_padding_len=$(( ($bar_len - $len_skipped_str) / 2 ))
-		for ((index=0; index<=$side_padding_len; index++)); do
+		for ((index=0; index<$side_padding_len; index++)); do
 			side_padding+="$skipped_playlist_empty_char"
 		done
 
@@ -140,10 +137,21 @@ print_bar(){
 		return
 	fi
 
+	# If we need to increment the bar for a skipped song
+	case "$bar_type" in
+	 *"skipped_song"*) 
+		color_str "fill_char_colored" "$fill_char" "blue"
+		
+	;;	
+	 *"downloaded_song"*) 
+		color_str "fill_char_colored" "$fill_char" "green"
+
+	esac
+
 	# Fill loading bar
-	for ((index=0; index<="$bar_len"; index++)); do
+	for (( index=0; index<="$bar_len"; index++)); do
 		if ((index < $bar_len*$perc_done/100)); then
-			bar_str+="$fill_char_downloaded"
+			bar_str+="$fill_char_colored"
 		else
 			bar_str+="$empty_char"
 		fi
@@ -172,7 +180,7 @@ parser(){
 main(){
 	# Capture other scripts stdout and parse it
 	local downloading_str="[download] Downloading item "
-	local downloaded_str="has already been recorded in the archive"
+	local skipped_song_str="has already been recorded in the archive"
 	local new_playlist_str="[download] Downloading playlist: "
 	local skipped_playlist_str="Skipping the following list:"
 	local parsed_data=()
@@ -184,6 +192,7 @@ main(){
 	declare -a genres_list
 	local list_str_len=0
 	local max_str_len=0
+	local song_num=0
 
 	# Draw first frame of CLI
 	
@@ -193,7 +202,7 @@ main(){
 	# Get info for amount of media to download for initial frame
 	if ! [[ -e Utils/num_vids.json ]]; then
 		first_execution="True"
-		./Utils/build_num_vids.sh "Utils/num_vids.json" > /dev/null 2>&1 
+		bash ./Utils/build_num_vids.sh "Utils/num_vids.json" > /dev/null 2>&1 
 	fi
 
 	# TODO: Constructing the first frame from num_vids means that we erroneosly
@@ -228,7 +237,7 @@ main(){
 	cursor_line=0
 
 	# Run the download and pipe it's stdout and stderr to the read command
-	./Utils/downloader.sh "$first_execution" "$verbose" 2>&1 |
+	bash ./Utils/downloader.sh "$first_execution" "$verbose" 2>&1 |
 
 	# Read one line from standard input while treating \ as a character 
 	while read -r output; do
@@ -251,18 +260,10 @@ main(){
 				"$list_songs" \
 				"$genre" \
 				"$max_str_len" \
-				"False"
-		;;	
-		*"$downloaded_str"*)
+				"downloaded_song"
 
-			parser "$output" 3 5 "parsed_data"
-			current_song="${parsed_data[0]}"
-			list_songs="${parsed_data[1]}"
-			# ¿Color bar differently when skipped track? 
-		;;
-		*"Nothing to download"*)
-			#echo "$output"
-		;;
+			((song_num++))
+		;;	
 		*"$new_playlist_str"*)
 			
 			genre="${genres_list["$playlist_index"]}"
@@ -271,7 +272,10 @@ main(){
 			# Move cursor down by one line to prepare for bar printing
 			printf "\x1B[1B"
 			((cursor_line++))
-			#echo "$output" 
+			
+			# We start tallying up songs and skipped songs again
+			song_num=0
+			
 		;;
 		*"$skipped_playlist_str"*)
 
@@ -289,8 +293,23 @@ main(){
 				"1" \
 				"$skipped_genre" \
 				"$max_str_len" \
-				"True"
-			#echo -ne "$skipped_genre: Skipped playlist. No new songs to download\r"
+				"skipped_playlist"
+
+			song_num=0
+		#;;
+		#*"$skipped_song_str"*)
+			
+			# Get skipped genre from captured output
+			#parser "$output" 4 0 "parsed_genre"
+			#skipped_genre="${parsed_genre[0]}"
+
+			#((song_num++))
+			#print_bar \
+				#"$song_num" \
+				#"10" \
+				#"$genre" \
+				#"$max_str_len" \
+				#"skipped_song"
 		esac
 	done
 	
