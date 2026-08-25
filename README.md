@@ -7,7 +7,7 @@ yt-dlp is a great open source tool developed to download YouTube playlists. This
 - Monitoring the progress in a minimal CLI
 - Speeding up subsequent runs by avoiding downloads of non updated playlists.
 
-![yt-dlps Utils](demo/yt-dlps-demo.gif)
+![yt-dlps Utils](Utils/yt-dlps-demo.gif)
 
 ## Requirements
 
