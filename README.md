@@ -17,3 +17,7 @@ yt-dlp is a great open source tool developed to download YouTube playlists. This
 - jq
 - Firefox
 - Deno 2.3+
+
+## Use
+
+After cloning the repo and downloading dependencies update `Utils/lists_info.json` with your corresponding list of playlists genres and URLs to those playlists, make sure to spell the genres without whitespaces and paste the playlist URL, not the first video in the playlist, finally run `bash yt-dlp.sh`. To trouleshoot pass `bash yt-dlps.sh "True"` and read the captured yt-dlp output. 
