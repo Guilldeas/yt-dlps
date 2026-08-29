@@ -1,6 +1,49 @@
 #!/usr/bin/env bash
 #set -x
 
+restore_terminal(){
+	printf "\x1B[?25h"
+}
+
+trap restore_terminal EXIT INT TERM
+
+check_dependencies(){
+	local missing_deps=()
+	local dep
+
+	if (( BASH_VERSINFO[0] < 4 || (BASH_VERSINFO[0] == 4 && BASH_VERSINFO[1] < 3) )); then
+		echo "Error: Bash 4.3 or newer is required." >&2
+		echo "Current version: $BASH_VERSION" >&2
+		exit 1
+	fi
+
+	for dep in jq yt-dlp ffmpeg ffprobe tput firefox; do
+		if ! command -v "$dep" > /dev/null 2>&1; then
+			missing_deps+=("$dep")
+		fi
+	done
+
+	if (( ${#missing_deps[@]} > 0 )); then
+		echo "Error: missing required dependencies: ${missing_deps[*]}" >&2
+		echo "Install them and make sure they are available in PATH before running yt-dlps.sh." >&2
+		exit 1
+	fi
+}
+
+validate_num_vids_json(){
+	local json_path=$1
+
+	if ! jq -e '
+		type == "object"
+		and length > 0
+		and all(.[]; test("^[0-9]+$") and tonumber > 0)
+	' "$json_path" > /dev/null; then
+		echo "Error: $json_path is missing playlist counts or contains invalid values." >&2
+		echo "Delete it and rerun yt-dlps.sh after fixing the dependencies." >&2
+		exit 1
+	fi
+}
+
 json2arr(){
 	# Takes a json relative path and outputs its content into
 	# an associative array given as a name in the second input
@@ -202,8 +245,12 @@ main(){
 	# Get info for amount of media to download for initial frame
 	if ! [[ -e Utils/num_vids.json ]]; then
 		first_execution="True"
-		bash ./Utils/build_num_vids.sh "Utils/num_vids.json" > /dev/null 2>&1 
+		if ! bash ./Utils/build_num_vids.sh "Utils/num_vids.json"; then
+			echo "Error: could not build Utils/num_vids.json." >&2
+			exit 1
+		fi
 	fi
+	validate_num_vids_json "Utils/num_vids.json"
 
 	# TODO: Constructing the first frame from num_vids means that we erroneosly
 	# report the amount of tracks to download until it's the turn to download
@@ -330,4 +377,5 @@ verbose=$1
 if [[ -z $1 ]]; then
 	verbose="False"
 fi
+check_dependencies
 main "$verbose"

@@ -16,7 +16,6 @@ yt-dlp is a great open source tool developed to download YouTube playlists. This
 - FFmpeg
 - jq
 - Firefox
-- Deno 2.3+
 
 ## Use
 
