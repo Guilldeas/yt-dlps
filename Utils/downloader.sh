@@ -4,9 +4,12 @@
 
 #----- Variables -------------------------------------------------------------
 declare -A list_info_arr
+declare -A num_vids_arr
 declare num_songs 
 first_execution=$1
 pruned_playlists="False"
+work_dir="${YTDLPS_WORK_DIR:-.yt-dlps-work}"
+mkdir -p "$work_dir"
 
 # Default variable for verbose (controlling debugging echos) is False unless user specifies something else
 if [ -z $2  ]; then
@@ -26,15 +29,15 @@ json2arr(){
         output_arr=()
 
         # Read list genres and urls from json into a temporary file
-        jq -r 'keys_unsorted[]' "$json_path" > Utils/tmplists.txt
-        jq -r 'values[]' "$json_path" > Utils/tmpurls.txt
+        jq -r 'keys_unsorted[]' "$json_path" > "$work_dir/tmplists.txt"
+        jq -r 'values[]' "$json_path" > "$work_dir/tmpurls.txt"
 
         # Create array from tmp file
-        mapfile -t genres < Utils/tmplists.txt
-        mapfile -t urls < Utils/tmpurls.txt
+        mapfile -t genres < "$work_dir/tmplists.txt"
+        mapfile -t urls < "$work_dir/tmpurls.txt"
 
-        rm Utils/tmplists.txt
-        rm Utils/tmpurls.txt
+        rm "$work_dir/tmplists.txt"
+        rm "$work_dir/tmpurls.txt"
 
         # Write data into array
         for ((index=0; index<"${#genres[@]}"; index++)); do
@@ -81,11 +84,14 @@ get_config(){
 
 	# Populate associative array with genres as keys and playlist urls as values
 	json2arr "Utils/lists_info.json" "list_info_arr"
+	if [[ -e "$work_dir/num_vids.json" ]]; then
+		json2arr "$work_dir/num_vids.json" "num_vids_arr"
+	fi
 	
 	# Store numbers of videos on each playlist if it wasnt done before
 	#if [[ $first_execution = "True"]]; then
 		#echo First execution
-		#./build_num_vids_json.sh "Utils/num_vids.json"	
+		#./build_num_vids_json.sh "$work_dir/num_vids.json"	
 		#first_execution="True"
 	#fi
 	
@@ -94,19 +100,19 @@ get_config(){
 		echo Not first execution
 		
 		# Find how many videos are in playlists
-		bash ./Utils/build_num_vids.sh "Utils/num_vids_current.json" 
+		bash ./Utils/build_num_vids.sh "$work_dir/num_vids_current.json" 
 		
 		# Keep only genre, num_videos pairs that have been updated
 		build_pruned_json \
-			"Utils/num_vids.json" \
-			"Utils/num_vids_current.json" \
-			"Utils/num_vids_pruned.json"
+			"$work_dir/num_vids.json" \
+			"$work_dir/num_vids_current.json" \
+			"$work_dir/num_vids_pruned.json"
 
 		# populate pruned list with urls instead of num_vids
-		populate_pruned_urls_json\
-			"Utils/num_vids_pruned.json" \
+		populate_pruned_urls_json \
+			"$work_dir/num_vids_pruned.json" \
 			"Utils/lists_info.json" \
-			"Utils/lists_info_pruned.json"
+			"$work_dir/lists_info_pruned.json"
 	fi
 	# IM NOT UPDATING THE PREVIOUS AND NEW LIST AT THE END OF CODE EXEC
 
@@ -133,7 +139,7 @@ download_playlists() {
 	local url
 
 	if [[ "$pruned_playlists" = True ]]; then
-		json2arr "Utils/lists_info_pruned.json" "list_info_arr"
+		json2arr "$work_dir/lists_info_pruned.json" "list_info_arr"
 		echo "pruned-----------------------"
 
 		# REMOVE LATER TROUBLESHOOTING
@@ -200,8 +206,8 @@ download_playlists_v2() {
 
 
 	# Get list of pruned keys (genres) if it exists
-	if [[ -e "Utils/lists_info_pruned.json" ]]; then
-		json2arr "Utils/lists_info_pruned.json" "list_info_arr_pruned"
+	if [[ -e "$work_dir/lists_info_pruned.json" ]]; then
+		json2arr "$work_dir/lists_info_pruned.json" "list_info_arr_pruned"
 		genres_list_pruned=("${!list_info_arr_pruned[@]}")
 	fi
 
@@ -211,8 +217,11 @@ download_playlists_v2() {
 	for genre in "${!list_info_arr[@]}"; do
 		url="${list_info_arr[$genre]}"
 
+		if [[ "${num_vids_arr[$genre]}" = "0" ]]; then
+			echo "Skipping the following list: $genre"
+
 		# On first execution we simply download
-		if ! [[ -e "Utils/lists_info_pruned.json" ]]; then
+		elif ! [[ -e "$work_dir/lists_info_pruned.json" ]]; then
 			yt_dlp_command "$genre" "$url"
 
 		# On further executions we report to the parser whenever 

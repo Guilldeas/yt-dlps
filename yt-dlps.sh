@@ -7,6 +7,8 @@ restore_terminal(){
 
 trap restore_terminal EXIT INT TERM
 
+work_dir="${YTDLPS_WORK_DIR:-.yt-dlps-work}"
+
 check_dependencies(){
 	local missing_deps=()
 	local dep
@@ -33,15 +35,11 @@ check_dependencies(){
 validate_num_vids_json(){
 	local json_path=$1
 
-	if ! jq -e '
+	jq -e '
 		type == "object"
 		and length > 0
-		and all(.[]; test("^[0-9]+$") and tonumber > 0)
-	' "$json_path" > /dev/null; then
-		echo "Error: $json_path is missing playlist counts or contains invalid values." >&2
-		echo "Delete it and rerun yt-dlps.sh after fixing the dependencies." >&2
-		exit 1
-	fi
+		and all(.[]; test("^[0-9]+$") and tonumber >= 0)
+	' "$json_path" > /dev/null 2>&1
 }
 
 json2arr(){
@@ -54,15 +52,15 @@ json2arr(){
         output_arr=()
 
         # Read list genres and urls from json into a temporary file
-        jq -r 'keys_unsorted[]' "$json_path" > Utils/tmplists.txt
-        jq -r 'values[]' "$json_path" > Utils/tmpurls.txt
+        jq -r 'keys_unsorted[]' "$json_path" > "$work_dir/tmplists.txt"
+        jq -r 'values[]' "$json_path" > "$work_dir/tmpurls.txt"
 
         # Create array from tmp file
-        mapfile -t genres < Utils/tmplists.txt
-        mapfile -t urls < Utils/tmpurls.txt
+        mapfile -t genres < "$work_dir/tmplists.txt"
+        mapfile -t urls < "$work_dir/tmpurls.txt"
 
-        rm Utils/tmplists.txt
-        rm Utils/tmpurls.txt
+        rm "$work_dir/tmplists.txt"
+        rm "$work_dir/tmpurls.txt"
 
         # Write data into array
         for ((index=0; index<"${#genres[@]}"; index++)); do
@@ -237,25 +235,32 @@ main(){
 	local max_str_len=0
 	local song_num=0
 
+	mkdir -p "$work_dir"
+
 	# Draw first frame of CLI
 	
 	# Hide cursor
 	printf "\x1B[?25l"
 	
 	# Get info for amount of media to download for initial frame
-	if ! [[ -e Utils/num_vids.json ]]; then
+	if ! validate_num_vids_json "$work_dir/num_vids.json"; then
 		first_execution="True"
-		if ! bash ./Utils/build_num_vids.sh "Utils/num_vids.json"; then
-			echo "Error: could not build Utils/num_vids.json." >&2
+		rm -f "$work_dir/num_vids.json"
+		if ! bash ./Utils/build_num_vids.sh "$work_dir/num_vids.json"; then
+			echo "Error: could not build $work_dir/num_vids.json." >&2
 			exit 1
 		fi
 	fi
-	validate_num_vids_json "Utils/num_vids.json"
+
+	if ! validate_num_vids_json "$work_dir/num_vids.json"; then
+		echo "Error: $work_dir/num_vids.json is missing playlist counts or contains invalid values." >&2
+		exit 1
+	fi
 
 	# TODO: Constructing the first frame from num_vids means that we erroneosly
 	# report the amount of tracks to download until it's the turn to download
 	# that playlist.
-	json2arr "Utils/num_vids.json" "num_lists_arr"	
+	json2arr "$work_dir/num_vids.json" "num_lists_arr"	
 
 	# Get genres input by user into an indexed array to update bars later
 	genres_list=("${!num_lists_arr[@]}")
@@ -274,7 +279,11 @@ main(){
 	((cursor_line++))
 	local genre 
 	for genre in "${!num_lists_arr[@]}"; do
-		print_bar "0" "${num_lists_arr[$genre]}" "$genre" "$max_str_len" "False"
+		if [[ "${num_lists_arr[$genre]}" = "0" ]]; then
+			print_bar "1" "1" "$genre" "$max_str_len" "skipped_playlist"
+		else
+			print_bar "0" "${num_lists_arr[$genre]}" "$genre" "$max_str_len" "False"
+		fi
 		printf "\n"
 		((cursor_line++))	
 	done
@@ -368,8 +377,8 @@ main(){
 
 	# Remove temporary files and update lists
 	if [[ "$first_execution" = False ]]; then
-		mv Utils/num_vids_current.json Utils/num_vids.json
-		rm Utils/num_vids_pruned.json Utils/lists_info_pruned.json
+		mv "$work_dir/num_vids_current.json" "$work_dir/num_vids.json"
+		rm "$work_dir/num_vids_pruned.json" "$work_dir/lists_info_pruned.json"
 	fi
 }
 

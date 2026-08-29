@@ -6,6 +6,12 @@
 
 json_path=$1
 declare -A list_info_arr
+work_dir="${YTDLPS_WORK_DIR:-.yt-dlps-work}"
+mkdir -p "$work_dir"
+json_dir="${json_path%/*}"
+if [[ "$json_dir" != "$json_path" ]]; then
+	mkdir -p "$json_dir"
+fi
 
 
 json2arr(){
@@ -18,15 +24,15 @@ json2arr(){
         output_arr=()
 
         # Read list genres and urls from json into a temporary file
-        jq -r 'keys_unsorted[]' "$json_path" > Utils/tmplists.txt
-        jq -r 'values[]' "$json_path" > Utils/tmpurls.txt
+        jq -r 'keys_unsorted[]' "$json_path" > "$work_dir/tmplists.txt"
+        jq -r 'values[]' "$json_path" > "$work_dir/tmpurls.txt"
 
         # Create array from tmp file
-        mapfile -t genres < Utils/tmplists.txt
-        mapfile -t urls < Utils/tmpurls.txt
+        mapfile -t genres < "$work_dir/tmplists.txt"
+        mapfile -t urls < "$work_dir/tmpurls.txt"
 
-        rm Utils/tmplists.txt
-        rm Utils/tmpurls.txt
+        rm "$work_dir/tmplists.txt"
+        rm "$work_dir/tmpurls.txt"
 
         # Write data into array
         for ((index=0; index<"${#genres[@]}"; index++)); do
@@ -41,35 +47,27 @@ json2arr(){
 json2arr "Utils/lists_info.json" "list_info_arr"
 
 # Iterate through associative array of genres and urls
+output_tmp="$work_dir/num_vids.tmp"
+jq --null-input "{}" > "$output_tmp" || exit 1
+
 for genre in "${!list_info_arr[@]}"; do
 	url="${list_info_arr[$genre]}"
 
 	# Find number of videos in playlist
-	num_vids=$(yt-dlp "$url" -I0 -O playlist:playlist_count)
-
-	# If json doesnt exist create it
-	if ! [[ -e "$json_path" ]]; then
-
-		if [[ "$verbose" = "True" ]]; then
-			echo file does not exist
-		fi
-
-		# Write one line storing a key value pair
-		jq --null-input \
-			--arg key "$genre" \
-			--arg value "$num_vids" \
-			'{($key): $value}' > "$json_path"
-
-	# If json already exists append line to it
-	else
-		if [[ "$verbose" = "True" ]]; then
-			echo file exists
-		fi
-
-		jq \
-			--arg key "$genre" \
-			--arg value "$num_vids" \
-			'. += {($key): $value}' "$json_path" > Utils/num_vids.tmp \
-			&& mv Utils/num_vids.tmp "$json_path" 
+	if ! num_vids=$(yt-dlp --no-warnings "$url" -I0 -O playlist:playlist_count); then
+		echo "Warning: skipping unavailable playlist $genre: $url" >&2
+		num_vids=0
+	elif ! [[ "$num_vids" =~ ^[0-9]+$ ]]; then
+		echo "Warning: skipping playlist with invalid count $genre: $num_vids" >&2
+		echo "Playlist URL: $url" >&2
+		num_vids=0
 	fi
+
+	jq \
+		--arg key "$genre" \
+		--arg value "$num_vids" \
+		". += {(\$key): \$value}" "$output_tmp" > "$output_tmp.next" \
+		&& mv "$output_tmp.next" "$output_tmp"
 done
+
+mv "$output_tmp" "$json_path"
